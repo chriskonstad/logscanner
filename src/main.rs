@@ -11,6 +11,15 @@ use structopt::StructOpt;
 //  -sort
 //  -heatmap
 
+#[derive(Debug)]
+enum Data {
+    Matching {
+        line: String,
+        range: std::ops::Range<usize>,
+    },
+    NotMatching(String),
+}
+
 #[derive(Debug, StructOpt)]
 struct Opt {
     /// The regex expression used to parse the logs
@@ -29,26 +38,36 @@ fn main() -> Result<()> {
 
     let mut hist = Histogram::<u64>::new(5)?;
 
-    stdin.lock().lines().for_each(|l| {
-        let l = l.unwrap();
-        if let Some(captures) = re.captures(&l) {
+    let data = stdin.lock().lines().map(|line| {
+        let line = line.unwrap();
+        if let Some(captures) = re.captures(&line) {
             if let Some(m) = captures.get(1) {
-                let before = &l[0..m.start()];
-                let during = &l[m.start()..m.end()];
-                if let Ok(f) = during.parse::<u64>() {
+                if let Ok(f) = line[m.start()..m.end()].parse::<u64>() {
                     hist += f;
                 }
+                return Data::Matching {
+                    range: m.range(),
+                    line,
+                };
+            }
+        }
+        Data::NotMatching(line)
+    })
+    .collect::<Vec<_>>();
+
+    data.into_iter().for_each(|data| {
+        match data {
+            Data::NotMatching(line) => println!("{}", line),
+            Data::Matching {line, range} => {
+                let before = &line[0..range.start];
+                let during = &line[range.clone()];
                 let during = match opt.highlight {
                     true => style(during).yellow(),
                     false => style(during),
                 };
-                let after = &l[m.end()..];
+                let after = &line[range.end..];
                 println!("{}{}{}", before, during, after);
-            } else {
-                println!("{}", l);
-            }
-        } else {
-            println!("{}", l);
+            },
         }
     });
 
