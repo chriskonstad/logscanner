@@ -6,7 +6,9 @@ use rayon::prelude::*;
 use regex::Regex;
 use std::cmp::PartialOrd;
 use std::convert::From;
-use std::io::{self, BufRead};
+use std::fs::File;
+use std::io::{self, BufRead, Write};
+use std::path::PathBuf;
 use structopt::{clap::arg_enum, StructOpt};
 
 // TODO(ckonstad)
@@ -72,6 +74,9 @@ impl From<Percentile> for Style {
 struct Opt {
     /// The regex expression used to parse the logs
     expr: String,
+
+    #[structopt(long, short, parse(from_os_str))]
+    input: Option<PathBuf>,
 
     /// If we should highlight data used.  This disables the heatmap.
     #[structopt(long)]
@@ -148,14 +153,25 @@ fn main() -> Result<()> {
         console::set_colors_enabled(opt.force_colors);
     }
 
-    let stdin = io::stdin();
-    let mut hist = Histogram::<u64>::new(5)?;
+    let raw_data = match &opt.input {
+        Some(file) => {
+            let f = File::open(file)?;
+            io::BufReader::new(f)
+                .lines()
+                .map(|line| line.unwrap())
+                .collect::<Vec<_>>()
+        }
+        None => {
+            let stdin = io::stdin();
+            stdin
+                .lock()
+                .lines()
+                .map(|line| line.unwrap())
+                .collect::<Vec<_>>()
+        }
+    };
 
-    let raw_data = stdin
-        .lock()
-        .lines()
-        .map(|line| line.unwrap())
-        .collect::<Vec<_>>();
+    let mut hist = Histogram::<u64>::new(5)?;
 
     let data = raw_data
         .into_par_iter()
@@ -183,10 +199,14 @@ fn main() -> Result<()> {
         }
     };
 
+    // println! grabs the stdout lock each time, so we'll grab it here
+    // and use writeln to reduce the amount of times we need to grab the locks
+    let stdout = io::stdout();
+    let mut lock = stdout.lock();
     filter_and_sort(data, opt.matching, opt.sorting)
         .into_iter()
         .for_each(|data| match data {
-            Data::NotMatching(line) => println!("{}", line),
+            Data::NotMatching(line) => writeln!(lock, "{}", line).unwrap(),
             Data::Matching {
                 line,
                 range,
@@ -206,7 +226,7 @@ fn main() -> Result<()> {
                     false => during,
                 };
                 let after = &line[range.end..];
-                println!("{}{}{}", before, during, after);
+                writeln!(lock, "{}{}{}", before, during, after).unwrap();
             }
         });
 
