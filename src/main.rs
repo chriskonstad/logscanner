@@ -174,7 +174,7 @@ fn main() -> Result<()> {
 
     let data = data
         .into_par_iter()
-        .map(|line| match_line(&re, line))
+        .map_with(re, |re, line| match_line(&re, line))
         .collect::<Vec<_>>();
 
     data.iter().for_each(|d| match d {
