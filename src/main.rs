@@ -199,14 +199,14 @@ fn main() -> Result<()> {
         }
     };
 
-    // println! grabs the stdout lock each time, so we'll grab it here
-    // and use writeln to reduce the amount of times we need to grab the locks
-    let stdout = io::stdout();
-    let mut lock = stdout.lock();
-    filter_and_sort(data, opt.matching, opt.sorting)
+    //// println! grabs the stdout lock each time, so we'll grab it here
+    //// and use writeln to reduce the amount of times we need to grab the locks
+    //let stdout = io::stdout();
+    //let mut lock = stdout.lock();
+    let blob = filter_and_sort(data, opt.matching, opt.sorting)
         .into_iter()
-        .for_each(|data| match data {
-            Data::NotMatching(line) => writeln!(lock, "{}", line).unwrap(),
+        .map(|data| match data {
+            Data::NotMatching(line) => line,
             Data::Matching {
                 line,
                 range,
@@ -226,9 +226,12 @@ fn main() -> Result<()> {
                     false => during,
                 };
                 let after = &line[range.end..];
-                writeln!(lock, "{}{}{}", before, during, after).unwrap();
+                format!("{}{}{}", before, during, after)
             }
-        });
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    println!("{}", blob);
 
     if opt.debug {
         println!("Number of samples: {}", hist.len());
