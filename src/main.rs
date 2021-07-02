@@ -7,7 +7,7 @@ use regex::Regex;
 use std::cmp::PartialOrd;
 use std::convert::From;
 use std::fs::File;
-use std::io::{self, BufRead, Write, BufWriter};
+use std::io::{self, BufRead, Write, BufWriter, BufReader};
 use std::path::PathBuf;
 use structopt::{clap::arg_enum, StructOpt};
 
@@ -156,15 +156,14 @@ fn main() -> Result<()> {
     let raw_data = match &opt.input {
         Some(file) => {
             let f = File::open(file)?;
-            io::BufReader::new(f)
+            io::BufReader::with_capacity(1 * 1024 * 1024, f)
                 .lines()
                 .map(|line| line.unwrap())
                 .collect::<Vec<_>>()
         }
         None => {
             let stdin = io::stdin();
-            stdin
-                .lock()
+            BufReader::with_capacity(1 * 1024 * 1024, stdin.lock())
                 .lines()
                 .map(|line| line.unwrap())
                 .collect::<Vec<_>>()
