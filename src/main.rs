@@ -153,7 +153,7 @@ fn main() -> Result<()> {
         console::set_colors_enabled(opt.force_colors);
     }
 
-    let raw_data = match &opt.input {
+    let data = match &opt.input {
         Some(file) => {
             let f = File::open(file)?;
             io::BufReader::with_capacity(1 * 1024 * 1024, f)
@@ -163,7 +163,7 @@ fn main() -> Result<()> {
         }
         None => {
             let stdin = io::stdin();
-            BufReader::with_capacity(1 * 1024 * 1024, stdin.lock())
+            BufReader::with_capacity(8 * 1024 * 1024, stdin.lock())
                 .lines()
                 .map(|line| line.unwrap())
                 .collect::<Vec<_>>()
@@ -172,7 +172,7 @@ fn main() -> Result<()> {
 
     let mut hist = Histogram::<u64>::new(5)?;
 
-    let data = raw_data
+    let data = data
         .into_par_iter()
         .map(|line| match_line(&re, line))
         .collect::<Vec<_>>();
@@ -206,7 +206,7 @@ fn main() -> Result<()> {
     // With a small 96k line input, buffering at 8KB took 300ms with 150 writes.
     // Buffering at 1MB took 33ms, with 2 write.
     let stdout = io::stdout();
-    let mut out = BufWriter::with_capacity(1 * 1024 * 1024, stdout.lock());
+    let mut out = BufWriter::with_capacity(8 * 1024 * 1024, stdout.lock());
     filter_and_sort(data, opt.matching, opt.sorting)
         .into_iter()
         .for_each(|data| match data {
