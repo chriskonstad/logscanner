@@ -25,9 +25,10 @@ The numbers will be highlighted based on if p50+, p90+, or p99+.
 
 You can pass `--highlight` to highlight all numbers yellow instead.
 
-You can also pass `--sort asc` or `--sort desc` to sort the lines by the integer
+You can also pass `--sorting asc` or `--sorting desc` to sort the lines by the integer
 captured by your regex, although this will drop non-matching lines.
 
 You can pass `--matching` to drop all non-matching lines without sorting.
 
 ![Screen Shot 2021-07-02 at 12 46 33 PM](https://user-images.githubusercontent.com/1539144/124322004-89675e00-db33-11eb-9a41-6cb044a1117e.png)
+![Screen Shot 2021-07-02 at 12 48 48 PM](https://user-images.githubusercontent.com/1539144/124322184-db0fe880-db33-11eb-99c7-1f356e23fce4.png)
