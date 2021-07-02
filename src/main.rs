@@ -28,6 +28,10 @@ struct Opt {
     /// If we should highlight data used
     #[structopt(long)]
     highlight: bool,
+
+    /// If we should make the text bold
+    #[structopt(long, short)]
+    bold: bool,
 }
 
 fn main() -> Result<()> {
@@ -64,6 +68,10 @@ fn main() -> Result<()> {
                 let during = match opt.highlight {
                     true => style(during).yellow(),
                     false => style(during),
+                };
+                let during = match opt.bold {
+                    true => during.bold(),
+                    false => during,
                 };
                 let after = &line[range.end..];
                 println!("{}{}{}", before, during, after);
