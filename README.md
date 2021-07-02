@@ -29,3 +29,5 @@ You can also pass `--sort asc` or `--sort desc` to sort the lines by the integer
 captured by your regex, although this will drop non-matching lines.
 
 You can pass `--matching` to drop all non-matching lines without sorting.
+
+![Screen Shot 2021-07-02 at 12 46 33 PM](https://user-images.githubusercontent.com/1539144/124322004-89675e00-db33-11eb-9a41-6cb044a1117e.png)
