@@ -1,14 +1,13 @@
 use anyhow::Result;
-use console::{Style, style};
+use console::{style, Style};
 use core::cmp::Ordering;
 use hdrhistogram::Histogram;
+use rayon::prelude::*;
 use regex::Regex;
-use std::convert::From;
 use std::cmp::PartialOrd;
+use std::convert::From;
 use std::io::{self, BufRead};
 use structopt::{clap::arg_enum, StructOpt};
-use rayon::prelude::*;
-
 
 // TODO(ckonstad)
 //  -context? (can we sort + context?)
@@ -120,21 +119,17 @@ fn match_line(re: &Regex, line: String) -> Data {
     Data::NotMatching(line)
 }
 
-fn filter_and_sort(
-    data: Vec<Data>,
-    matching: bool,
-    sorting: Sorting,
-) -> Vec<Data> {
+fn filter_and_sort(data: Vec<Data>, matching: bool, sorting: Sorting) -> Vec<Data> {
     match (matching, sorting) {
         (false, Sorting::Original) => data,
         (true, Sorting::Original) => data
             .into_iter()
-            .filter(|d| matches!(d, Data::Matching {..}))
+            .filter(|d| matches!(d, Data::Matching { .. }))
             .collect::<Vec<_>>(),
         (_, Sorting::Asc) | (_, Sorting::Desc) => {
             let mut data = data
                 .into_iter()
-                .filter(|d| matches!(d, Data::Matching {..}))
+                .filter(|d| matches!(d, Data::Matching { .. }))
                 .collect::<Vec<_>>();
             data.par_sort_by(|a, b| a.partial_cmp(b).unwrap());
             if sorting == Sorting::Desc {
@@ -167,12 +162,10 @@ fn main() -> Result<()> {
         .map(|line| match_line(&re, line))
         .collect::<Vec<_>>();
 
-    data
-        .iter()
-        .for_each(|d| match d {
-            Data::Matching { parsed, .. } => hist += *parsed,
-            _ => {},
-        });
+    data.iter().for_each(|d| match d {
+        Data::Matching { parsed, .. } => hist += *parsed,
+        _ => {}
+    });
 
     let p99 = hist.value_at_quantile(0.99);
     let p90 = hist.value_at_quantile(0.90);
@@ -192,10 +185,13 @@ fn main() -> Result<()> {
 
     filter_and_sort(data, opt.matching, opt.sorting)
         .into_iter()
-        .for_each(|data| {
-        match data {
+        .for_each(|data| match data {
             Data::NotMatching(line) => println!("{}", line),
-            Data::Matching {line, range, parsed} => {
+            Data::Matching {
+                line,
+                range,
+                parsed,
+            } => {
                 let before = &line[0..range.start];
                 let during = &line[range.clone()];
                 let during = match opt.highlight {
@@ -211,9 +207,8 @@ fn main() -> Result<()> {
                 };
                 let after = &line[range.end..];
                 println!("{}{}{}", before, during, after);
-            },
-        }
-    });
+            }
+        });
 
     if opt.debug {
         println!("Number of samples: {}", hist.len());
@@ -262,13 +257,7 @@ mod tests {
     }
 
     fn sample_data() -> Vec<Data> {
-        vec![
-            data5(),
-            hello(),
-            data10(),
-            world(),
-            data1(),
-        ]
+        vec![data5(), hello(), data10(), world(), data1()]
     }
 
     #[test]
@@ -279,7 +268,7 @@ mod tests {
             match_line(&re, "Hello".to_string())
         );
         assert_eq!(
-            Data::Matching{
+            Data::Matching {
                 line: "123".to_string(),
                 range: 0..3,
                 parsed: 123,
