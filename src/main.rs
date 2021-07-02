@@ -104,6 +104,46 @@ struct Opt {
     sorting: Sorting,
 }
 
+fn match_line(re: &Regex, line: String) -> Data {
+    if let Some(captures) = re.captures(&line) {
+        if let Some(m) = captures.get(1) {
+            if let Ok(f) = line[m.start()..m.end()].parse::<u64>() {
+                return Data::Matching {
+                    range: m.range(),
+                    line,
+                    parsed: f,
+                };
+            }
+        }
+    }
+    Data::NotMatching(line)
+}
+
+fn filter_and_sort(
+    data: Vec<Data>,
+    matching: bool,
+    sorting: Sorting,
+) -> Vec<Data> {
+    match (matching, sorting) {
+        (false, Sorting::Original) => data,
+        (true, Sorting::Original) => data
+            .into_iter()
+            .filter(|d| matches!(d, Data::Matching {..}))
+            .collect::<Vec<_>>(),
+        (_, Sorting::Asc) | (_, Sorting::Desc) => {
+            let mut data = data
+                .into_iter()
+                .filter(|d| matches!(d, Data::Matching {..}))
+                .collect::<Vec<_>>();
+            data.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            if sorting == Sorting::Desc {
+                data.reverse();
+            }
+            data
+        }
+    }
+}
+
 fn main() -> Result<()> {
     let opt = Opt::from_args();
     let re = Regex::new(&opt.expr)?;
@@ -117,20 +157,11 @@ fn main() -> Result<()> {
 
     let data = stdin.lock().lines().map(|line| {
         let line = line.unwrap();
-        if let Some(captures) = re.captures(&line) {
-            if let Some(m) = captures.get(1) {
-                if let Ok(f) = line[m.start()..m.end()].parse::<u64>() {
-                    hist += f;
-
-                    return Data::Matching {
-                        range: m.range(),
-                        line,
-                        parsed: f,
-                    };
-                }
-            }
-        }
-        Data::NotMatching(line)
+        match_line(&re, line)
+    })
+    .inspect(|d| match d {
+        Data::Matching { parsed, .. } => hist += *parsed,
+        _ => {},
     })
     .collect::<Vec<_>>();
 
@@ -150,26 +181,9 @@ fn main() -> Result<()> {
         }
     };
 
-    let data = match (opt.matching, opt.sorting) {
-        (false, Sorting::Original) => data,
-        (true, Sorting::Original) => data
-            .into_iter()
-            .filter(|d| matches!(d, Data::Matching {..}))
-            .collect::<Vec<_>>(),
-        (_, Sorting::Asc) | (_, Sorting::Desc) => {
-            let mut data = data
-                .into_iter()
-                .filter(|d| matches!(d, Data::Matching {..}))
-                .collect::<Vec<_>>();
-            data.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            if opt.sorting == Sorting::Desc {
-                data.reverse();
-            }
-            data
-        }
-    };
-
-    data.into_iter().for_each(|data| {
+    filter_and_sort(data, opt.matching, opt.sorting)
+        .into_iter()
+        .for_each(|data| {
         match data {
             Data::NotMatching(line) => println!("{}", line),
             Data::Matching {line, range, parsed} => {
@@ -194,10 +208,128 @@ fn main() -> Result<()> {
 
     if opt.debug {
         println!("Number of samples: {}", hist.len());
-        println!("99'th percentile:  {}", hist.value_at_quantile(0.99));
-        println!("90'th percentile:  {}", hist.value_at_quantile(0.9));
-        println!("50'th percentile:  {}", hist.value_at_quantile(0.5));
+        println!("99'th percentile:  {}", p99);
+        println!("90'th percentile:  {}", p90);
+        println!("50'th percentile:  {}", p50);
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn data1() -> Data {
+        Data::Matching {
+            line: "1".to_string(),
+            range: 0..1,
+            parsed: 1,
+        }
+    }
+
+    fn data5() -> Data {
+        Data::Matching {
+            line: "5".to_string(),
+            range: 0..1,
+            parsed: 5,
+        }
+    }
+
+    fn data10() -> Data {
+        Data::Matching {
+            line: "10".to_string(),
+            range: 0..2,
+            parsed: 10,
+        }
+    }
+
+    fn hello() -> Data {
+        Data::NotMatching("hello".to_string())
+    }
+
+    fn world() -> Data {
+        Data::NotMatching("world".to_string())
+    }
+
+    fn sample_data() -> Vec<Data> {
+        vec![
+            data5(),
+            hello(),
+            data10(),
+            world(),
+            data1(),
+        ]
+    }
+
+    #[test]
+    fn test_match_line() {
+        let re = Regex::new(r"(\d+)").unwrap();
+        assert_eq!(
+            Data::NotMatching("Hello".to_string()),
+            match_line(&re, "Hello".to_string())
+        );
+        assert_eq!(
+            Data::Matching{
+                line: "123".to_string(),
+                range: 0..3,
+                parsed: 123,
+            },
+            match_line(&re, "123".to_string())
+        );
+    }
+
+    #[test]
+    fn test_match_line_bad_regex() {
+        let re = Regex::new(r"(\D+)").unwrap();
+        assert_eq!(
+            Data::NotMatching("Hello".to_string()),
+            match_line(&re, "Hello".to_string())
+        );
+        assert_eq!(
+            Data::NotMatching("123".to_string()),
+            match_line(&re, "123".to_string())
+        );
+    }
+
+    #[test]
+    fn test_match_line_no_capture() {
+        let re = Regex::new(r"\d+").unwrap();
+        assert_eq!(
+            Data::NotMatching("123".to_string()),
+            match_line(&re, "123".to_string())
+        );
+    }
+
+    #[test]
+    fn test_no_matching_no_sorting() {
+        assert_eq!(
+            sample_data(),
+            filter_and_sort(sample_data(), false, Sorting::Original),
+        );
+    }
+
+    #[test]
+    fn test_matching_no_sorting() {
+        assert_eq!(
+            vec![data5(), data10(), data1()],
+            filter_and_sort(sample_data(), true, Sorting::Original),
+        );
+    }
+
+    #[test]
+    fn test_no_matching_sorting_desc() {
+        assert_eq!(
+            vec![data10(), data5(), data1()],
+            filter_and_sort(sample_data(), false, Sorting::Desc),
+        );
+    }
+
+    #[test]
+    fn test_matching_sorting_asc() {
+        assert_eq!(
+            vec![data1(), data5(), data10()],
+            filter_and_sort(sample_data(), true, Sorting::Asc),
+        );
+    }
 }
