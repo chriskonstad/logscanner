@@ -7,7 +7,7 @@ use regex::Regex;
 use std::cmp::PartialOrd;
 use std::convert::From;
 use std::fs::File;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, Write, BufWriter};
 use std::path::PathBuf;
 use structopt::{clap::arg_enum, StructOpt};
 
@@ -199,14 +199,19 @@ fn main() -> Result<()> {
         }
     };
 
-    //// println! grabs the stdout lock each time, so we'll grab it here
-    //// and use writeln to reduce the amount of times we need to grab the locks
-    //let stdout = io::stdout();
-    //let mut lock = stdout.lock();
-    let blob = filter_and_sort(data, opt.matching, opt.sorting)
+    // println! grabs the stdout lock each time, so we'll grab it here
+    // and use BufWriter/writeln to reduce the amount of times we need to grab
+    // the locks
+    // We'll buffer to 1MB chunks.  Memory isn't free, but also we can burn
+    // 1MB without a worry, and stdout writing is EXPENSIVE.
+    // With a small 96k line input, buffering at 8KB took 300ms with 150 writes.
+    // Buffering at 1MB took 33ms, with 2 write.
+    let stdout = io::stdout();
+    let mut out = BufWriter::with_capacity(1 * 1024 * 1024, stdout.lock());
+    filter_and_sort(data, opt.matching, opt.sorting)
         .into_iter()
-        .map(|data| match data {
-            Data::NotMatching(line) => line,
+        .for_each(|data| match data {
+            Data::NotMatching(line) => writeln!(out, "{}", line).unwrap(),
             Data::Matching {
                 line,
                 range,
@@ -226,12 +231,10 @@ fn main() -> Result<()> {
                     false => during,
                 };
                 let after = &line[range.end..];
-                format!("{}{}{}", before, during, after)
+                writeln!(out, "{}{}{}", before, during, after).unwrap()
             }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    println!("{}", blob);
+        });
+    out.flush()?;
 
     if opt.debug {
         println!("Number of samples: {}", hist.len());
