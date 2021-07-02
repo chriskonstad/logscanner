@@ -7,6 +7,7 @@ use std::convert::From;
 use std::cmp::PartialOrd;
 use std::io::{self, BufRead};
 use structopt::{clap::arg_enum, StructOpt};
+use rayon::prelude::*;
 
 
 // TODO(ckonstad)
@@ -135,7 +136,7 @@ fn filter_and_sort(
                 .into_iter()
                 .filter(|d| matches!(d, Data::Matching {..}))
                 .collect::<Vec<_>>();
-            data.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            data.par_sort_by(|a, b| a.partial_cmp(b).unwrap());
             if sorting == Sorting::Desc {
                 data.reverse();
             }
@@ -155,15 +156,23 @@ fn main() -> Result<()> {
     let stdin = io::stdin();
     let mut hist = Histogram::<u64>::new(5)?;
 
-    let data = stdin.lock().lines().map(|line| {
-        let line = line.unwrap();
-        match_line(&re, line)
-    })
-    .inspect(|d| match d {
-        Data::Matching { parsed, .. } => hist += *parsed,
-        _ => {},
-    })
-    .collect::<Vec<_>>();
+    let raw_data = stdin
+        .lock()
+        .lines()
+        .map(|line| line.unwrap())
+        .collect::<Vec<_>>();
+
+    let data = raw_data
+        .into_par_iter()
+        .map(|line| match_line(&re, line))
+        .collect::<Vec<_>>();
+
+    data
+        .iter()
+        .for_each(|d| match d {
+            Data::Matching { parsed, .. } => hist += *parsed,
+            _ => {},
+        });
 
     let p99 = hist.value_at_quantile(0.99);
     let p90 = hist.value_at_quantile(0.90);
