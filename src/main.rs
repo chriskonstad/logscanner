@@ -1,17 +1,27 @@
 use anyhow::Result;
 use console::{Style, style};
+use core::cmp::Ordering;
 use hdrhistogram::Histogram;
 use regex::Regex;
 use std::convert::From;
+use std::cmp::PartialOrd;
 use std::io::{self, BufRead};
-use structopt::StructOpt;
+use structopt::{clap::arg_enum, StructOpt};
 
 
 // TODO(ckonstad)
-//  -filter
-//  -sort
+//  -context? (can we sort + context?)
 
-#[derive(Debug)]
+arg_enum! {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    enum Sorting {
+        Original,
+        Asc,
+        Desc,
+    }
+}
+
+#[derive(Debug, PartialEq)]
 enum Data {
     Matching {
         line: String,
@@ -19,6 +29,24 @@ enum Data {
         parsed: u64,
     },
     NotMatching(String),
+}
+
+impl PartialOrd for Data {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let a = match self {
+            Data::Matching { parsed, .. } => Some(parsed),
+            _ => None,
+        };
+        let b = match other {
+            Data::Matching { parsed, .. } => Some(parsed),
+            _ => None,
+        };
+
+        match (a, b) {
+            (Some(a), Some(b)) => a.partial_cmp(b),
+            (_, _) => None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -60,6 +88,20 @@ struct Opt {
     /// If we should force color output
     #[structopt(short, long)]
     force_colors: bool,
+
+    /// If we should only print matching lines
+    #[structopt(short, long)]
+    matching: bool,
+
+    /// If we should only print matching lines
+    #[structopt(
+        short,
+        long,
+        possible_values = &Sorting::variants(),
+        case_insensitive = true,
+        default_value="original",
+    )]
+    sorting: Sorting,
 }
 
 fn main() -> Result<()> {
@@ -105,6 +147,25 @@ fn main() -> Result<()> {
             Percentile::P50
         } else {
             Percentile::Other
+        }
+    };
+
+    let data = match (opt.matching, opt.sorting) {
+        (false, Sorting::Original) => data,
+        (true, Sorting::Original) => data
+            .into_iter()
+            .filter(|d| matches!(d, Data::Matching {..}))
+            .collect::<Vec<_>>(),
+        (_, Sorting::Asc) | (_, Sorting::Desc) => {
+            let mut data = data
+                .into_iter()
+                .filter(|d| matches!(d, Data::Matching {..}))
+                .collect::<Vec<_>>();
+            data.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            if opt.sorting == Sorting::Desc {
+                data.reverse();
+            }
+            data
         }
     };
 
